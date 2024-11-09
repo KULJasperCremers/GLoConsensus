@@ -1,11 +1,14 @@
 import glob
 import logging
 import os
-from itertools import combinations, combinations_with_replacement
+from itertools import chain, combinations, combinations_with_replacement
 
 import numpy as np
+import path as path_class
 import utils
+import visualize as vis
 from logger import BASE_LOGGER
+from numba import typed
 
 logger = BASE_LOGGER
 # logger.setLevel(logging.INFO)
@@ -85,8 +88,8 @@ if __name__ == '__main__':
         id(ts): index for index, ts in enumerate(timeseries_list)
     }
 
-    # set up a list to hold all the paths for each global column
-    global_column_lists_paths = {i: [] for i in range(n)}
+    # set up a dict to hold all the lists of path objects for each global column
+    global_column_dict_lists_path = {i: [] for i in range(n)}
 
     # the amount of comparisons needed to set up the loop to fill the global column lists
     total_comparisons = n * (n + 1) // 2 if INCLUDE_DIAGONAL else n * (n - 1) // 2
@@ -171,7 +174,12 @@ if __name__ == '__main__':
 
         sm_tuple = (di_similarity_matrix, ut_similarity_matrix, lt_similarity_matrix)
         global_start_index_tuple = (row_start, col_start)
-        paths = utils.find_local_warping_paths(
+        # depending on the type of comparison either return:
+        #   diagonal comparison: diagonal paths
+        #   non-diagonal comparison:
+        #       upper triangular paths of the comparison itself, e.g. global index (0,1)
+        #       lower triangular paths are mirrored paths of the mirrored comparison e.g. global index (1,0)
+        di_paths, ut_paths, lt_paths = utils.find_local_warping_paths(
             sm_tuple,
             cumulative_similarity_matrix,
             diagonal,
@@ -182,7 +190,42 @@ if __name__ == '__main__':
             global_start_index_tuple,
         )
 
-        print(f'sm tuple: {sum(1 for sm in sm_tuple if sm is not None)}')
-        logger.info(
-            msg=f'Found {len(paths)} paths in total for comparison {comparison_index + 1}.'
+        if diagonal and di_paths is not None:
+            # (r_start, r_end), (c_start, c_end)
+            # (i, i+1)        , (j, j+1)
+            # 0: (0,1) (0,1) //                //
+            #                // 3: (1,2) (1,2) //
+            #                                  // 5: (2,3) (2,3)
+            # append to the global column of ts1_offets[0] (=current) for diagonal paths
+            global_column_dict_lists_path[ts1_offsets[0]].append(di_paths)
+            logger.info(
+                msg=f'Found {len(di_paths)} diagonal paths in total for comparison {comparison_index + 1}.\n'
+            )
+        elif ut_paths is not None and lt_paths is not None:
+            # (r_start, r_end), (c_start, c_end)
+            # (i, i+1)        , (j, j+1)
+            #                // 1: (0,1) (1,2) // 2: (0,1) (2,3)
+            #                //                // 4: (1,2) (2,3)
+            #                                  //
+            # append to the global column of ts2_offsets[0] (=current) for upper triangular paths
+            global_column_dict_lists_path[ts2_offsets[0]].append(ut_paths)
+            # append to the global column of ts1_offsets[0] (=previous) for lower triangular paths
+            global_column_dict_lists_path[ts1_offsets[0]].append(lt_paths)
+            logger.info(
+                msg=f'Found {len(ut_paths)} upper triangular paths and {len(lt_paths)} lower triangular paths in total for comparison {comparison_index + 1}.\n'
+            )
+
+    # set up a dict to hold the concatenated lists of path objects for each global column
+    global_column_dict_path = {}
+    for column in global_column_dict_lists_path:
+        global_column_dict_path[column] = typed.List.empty_list(
+            path_class.Path.class_type.instance_type  # type: ignore
         )
+        for path in list(chain.from_iterable(global_column_dict_lists_path[column])):
+            global_column_dict_path[column].append(path)
+
+    fig, axs = vis.plot_global_sm_and_column_warping_paths(
+        timeseries_list,
+        global_similarity_matrix,
+        global_column_dict_path,
+    )

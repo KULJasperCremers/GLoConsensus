@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 from numba import boolean, float32, float64, int32, njit
 
@@ -27,41 +29,44 @@ def calculate_similarity_matrixV1(
 
 @njit(float32[:, :](float32[:, :], int32[:, :], float64, float64, float64))
 def calculate_cumulative_similarity_matrixV1(
-    similarity_matrix: np.ndarray,
+    similarity_matrix: Optional[np.ndarray],
     STEP_SIZES: np.ndarray,
-    tau: float,
-    delta_a: float,
+    tau: np.float32,
+    delta_a: np.float32,
     delta_m: float,
 ) -> np.ndarray:
     """Calculate the cumulative similarity matrix from the similarity matrix."""
     max_vertical_step = np.max(STEP_SIZES[:, 0])
     max_horizontal_step = np.max(STEP_SIZES[:, 1])
-    n, m = similarity_matrix.shape
-    cumulative_similarity_matrix = np.zeros(
-        (
-            n + max_vertical_step,
-            m + max_horizontal_step,
-        ),
-        dtype=np.float32,
-    )
+    if similarity_matrix is not None:
+        n, m = similarity_matrix.shape
+        cumulative_similarity_matrix = np.zeros(
+            (
+                n + max_vertical_step,
+                m + max_horizontal_step,
+            ),
+            dtype=np.float32,
+        )
 
-    for row in range(n):
-        for column in range(m):
-            similarity = similarity_matrix[row, column]
-            indices = (
-                np.array([row + max_vertical_step, column + max_horizontal_step])
-                - STEP_SIZES
-            )
-            max_cumulative_similarity = np.amax(
-                np.array([cumulative_similarity_matrix[i_, j_] for (i_, j_) in indices])
-            )
-            if similarity < tau:
-                cumulative_similarity_matrix[
-                    row + max_vertical_step, column + max_horizontal_step
-                ] = max(0, delta_m * max_cumulative_similarity - delta_a)
-            else:
-                cumulative_similarity_matrix[
-                    row + max_vertical_step, column + max_horizontal_step
-                ] = max(0, max_cumulative_similarity + similarity)
+        for row in range(n):
+            for column in range(m):
+                similarity = similarity_matrix[row, column]
+                indices = (
+                    np.array([row + max_vertical_step, column + max_horizontal_step])
+                    - STEP_SIZES
+                )
+                max_cumulative_similarity = np.amax(
+                    np.array(
+                        [cumulative_similarity_matrix[i_, j_] for (i_, j_) in indices]
+                    )
+                )
+                if similarity < tau:
+                    cumulative_similarity_matrix[
+                        row + max_vertical_step, column + max_horizontal_step
+                    ] = max(0, delta_m * max_cumulative_similarity - delta_a)
+                else:
+                    cumulative_similarity_matrix[
+                        row + max_vertical_step, column + max_horizontal_step
+                    ] = max(0, max_cumulative_similarity + similarity)
 
     return cumulative_similarity_matrix

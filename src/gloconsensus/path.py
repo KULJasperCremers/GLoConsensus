@@ -2,7 +2,7 @@ import numpy as np
 from numba import float32, int32
 from numba.experimental import jitclass
 
-class_setup = [
+spec = [
     ('path', int32[:, :]),
     ('path_similarities', float32[:]),
     ('cumulative_path_similarity', float32[:]),
@@ -15,7 +15,7 @@ class_setup = [
 ]
 
 
-@jitclass(class_setup)
+@jitclass(spec)  # type: ignore
 class Path:
     """Represents a warping path between two timeseries segments, including similarity
     information.
@@ -46,7 +46,6 @@ class Path:
         self.construct_indices()
 
     def construct_indices(self) -> None:
-        """Constructs mappings from timeseries indices to path indices."""
         current_row = self.row_start
         current_column = self.column_start
 
@@ -73,14 +72,11 @@ class Path:
         self.row_indices = row_indices
         self.column_indices = column_indices
 
-    def find_row(self, row: int) -> int:
-        """Find the index in the path corresponding to the given row timeseries index."""
+    def find_row(self, row: int) -> np.ndarray:
         return self.row_indices[row - self.row_start]
 
-    def find_column(self, column: int) -> int:
-        """Find the index in the path corresponding to the given column timeseries index."""
+    def find_column(self, column: int) -> np.ndarray:
         return self.column_indices[column - self.column_start]
 
-    def __getitem__(self, index: int) -> np.ndarray:
-        """Get the (row, column) pair at a specific index in the path."""
+    def __getitem__(self, index: np.ndarray) -> np.ndarray:
         return self.path[index, :]
