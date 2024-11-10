@@ -72,11 +72,11 @@ class Path:
         self.row_indices = row_indices
         self.column_indices = column_indices
 
-    def find_row(self, row: int) -> np.ndarray:
-        return self.row_indices[row - self.row_start]
+    def find_row(self, row: int) -> int:
+        return int(self.row_indices[row - self.row_start])
 
-    def find_column(self, column: int) -> np.ndarray:
-        return self.column_indices[column - self.column_start]
+    def find_column(self, column: int) -> int:
+        return int(self.column_indices[column - self.column_start])
 
-    def __getitem__(self, index: np.ndarray) -> np.ndarray:
+    def __getitem__(self, index: int) -> np.ndarray:
         return self.path[index, :]

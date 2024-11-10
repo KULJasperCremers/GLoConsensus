@@ -40,9 +40,22 @@ if __name__ == '__main__':
     #                                           for id:  time1
 
     patient_data = utils.load_patient_data('./data/patient_data_scaled.pkl')
-    patient_ids = ['ALS01']
+    patient_ids = [
+        'ALS01',
+        #'ALS02',
+    ]
     scenario_ids = ['scenario1']
-    time_ids = ['time1', 'time2', 'time3']
+    time_ids = [
+        'time1',
+        'time2',
+        'time3',
+        'time4',
+        'time5',
+        #'time6',
+        #'time7',
+        #'time8',
+        #'time9',
+    ]
     timeseries_list = utils.filter_time_series(
         patient_data, patient_ids, scenario_ids, time_ids
     )
@@ -228,4 +241,22 @@ if __name__ == '__main__':
         timeseries_list,
         global_similarity_matrix,
         global_column_dict_path,
+    )
+
+    # find x motif representatives in the global column paths
+    x = 10
+    motif_representatives = utils.find_motif_representatives(
+        x, global_offsets, global_column_dict_path, L_MIN, L_MAX, OVERLAP
+    )
+
+    logger.info(
+        msg=f'Found {len(motif_representatives)} motif representatives in total.\n'
+    )
+
+    utils.visualize_motif_representatives(
+        motif_representatives,
+        global_column_dict_path,
+        timeseries_list,
+        global_similarity_matrix,
+        mask=np.full(global_similarity_matrix.shape[0], False),
     )

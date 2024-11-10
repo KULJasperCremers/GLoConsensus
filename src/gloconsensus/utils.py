@@ -1,4 +1,5 @@
 import pickle
+from itertools import chain
 from typing import Optional, Union
 
 import motif_finder as mf
@@ -7,6 +8,7 @@ import pandas as pd
 import path as path_class
 import path_finder as pf
 import similarity_matrix as sm
+import visualize as vis
 from motif_representative import MotifRepresentative
 from numba import types
 
@@ -143,12 +145,35 @@ def find_motif_representatives(
     OVERLAP: float,
 ) -> list[MotifRepresentative]:
     motif_representatives = []
-    for motif_rep in mf.find_motifs_representativesV2(
+    for motif_rep in mf.find_motifs_representativesV3(
         x, global_offsets, global_column_dict_path, L_MIN, L_MAX, OVERLAP
     ):
         motif_representatives.append(motif_rep)
 
     return motif_representatives
+
+
+def visualize_motif_representatives(
+    motif_representatives: list[MotifRepresentative],
+    global_column_dict_path: dict[int, list[path_class.Path]],
+    timeseries_list: list[np.ndarray],
+    global_similarity_matrix: np.ndarray,
+    mask: np.ndarray,
+) -> None:
+    for motif_representative in motif_representatives:
+        vis.plot_global_sm_and_induced_paths(
+            timeseries_list,
+            global_similarity_matrix,
+            motif_representative.induced_paths,
+            motif_representative.representative,
+        )
+        vis.plot_motif_set(
+            timeseries_list,
+            motif_representative.representative,
+            motif_representative.motif_set,
+            motif_representative.induced_paths,
+            motif_representative.fitness,
+        )
 
 
 def estimate_tau_symmetric(
