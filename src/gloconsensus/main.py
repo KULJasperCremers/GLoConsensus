@@ -1,18 +1,17 @@
 import glob
 import logging
+import multiprocessing
 import os
 from itertools import chain, combinations, combinations_with_replacement
 
+import logger
 import numpy as np
 import path as path_class
 import utils
-import visualize as vis
-from logger import BASE_LOGGER
 from numba import typed
+from process import process_comparison
 
-logger = BASE_LOGGER
-# logger.setLevel(logging.INFO)
-logger.setLevel(logging.DEBUG)
+main_logger = logging.getLogger()
 
 # clean the plot map before running GLoConsensus
 for plot in glob.glob('./plots/*'):
@@ -29,6 +28,10 @@ V_WIDTH = L_MIN // 2
 OVERLAP = 0.0
 
 if __name__ == '__main__':
+    # PARALLELIZATION logging setup
+    logger.start_listener()
+    log_queue = logger.get_log_queue()
+
     # DATA SETUP:
     #   can chose any number of patients ids:
     #                                           ALS01 - ALS05
@@ -42,7 +45,10 @@ if __name__ == '__main__':
     patient_data = utils.load_patient_data('./data/patient_data_scaled.pkl')
     patient_ids = [
         'ALS01',
-        #'ALS02',
+        'ALS02',
+        'ALS03',
+        'ALS04',
+        'ALS05',
     ]
     scenario_ids = ['scenario1']
     time_ids = [
@@ -51,10 +57,10 @@ if __name__ == '__main__':
         'time3',
         'time4',
         'time5',
-        #'time6',
-        #'time7',
-        #'time8',
-        #'time9',
+        'time6',
+        'time7',
+        'time8',
+        'time9',
     ]
     timeseries_list = utils.filter_time_series(
         patient_data, patient_ids, scenario_ids, time_ids
@@ -91,9 +97,6 @@ if __name__ == '__main__':
     global_offsets = np.cumsum([0] + timeseries_length)
     global_n = max(global_offsets)
 
-    # create a global similarity matrix to hold the similarity values for each individual comparison
-    global_similarity_matrix = np.zeros((global_n, global_n), dtype=np.float32)
-
     # map each timeseries to an unique index
     timeseries_index_map = dict(enumerate(timeseries_list))
     # reverse map for each timeseries to an index for easy lookup
@@ -101,13 +104,10 @@ if __name__ == '__main__':
         id(ts): index for index, ts in enumerate(timeseries_list)
     }
 
-    # set up a dict to hold all the lists of path objects for each global column
-    global_column_dict_lists_path = {i: [] for i in range(n)}
-
     # the amount of comparisons needed to set up the loop to fill the global column lists
     total_comparisons = n * (n + 1) // 2 if INCLUDE_DIAGONAL else n * (n - 1) // 2
-    logger.info(
-        msg=f'Performing {total_comparisons} comparisons in total to set up the global column lists.\n'
+    print(
+        f'Performing {total_comparisons} comparisons in total to set up the global column lists.\n'
     )
     # timeseries comparisons set up for the loop to fill the global column lists
     #   combinations_with_replacements returns self comparisons, e.g. (ts1, ts1)
@@ -118,9 +118,9 @@ if __name__ == '__main__':
         else combinations(timeseries_list, 2)
     )
 
-    # loop to set up the global column lists
+    # PARALLELIZATION setup:
+    args_list = []
     for comparison_index, (ts1, ts2) in enumerate(comparisons):
-        logger.info(msg=f'Performing comparison {comparison_index + 1}.')
         # reverse lookup to get the index for each timeseries
         ts1_index = reverse_timeseries_index_map[id(ts1)]
         ts2_index = reverse_timeseries_index_map[id(ts2)]
@@ -128,105 +128,39 @@ if __name__ == '__main__':
         # boolean to determine if the current comparison is a self comparison or not
         diagonal = ts1_index == ts2_index and INCLUDE_DIAGONAL
 
-        # similarity matrix calculations:
-        #   diagonal sm: ts1 and ts2 are equal
-        #   upper triangular sm: ts1 is the row perspective
-        #   lower triangular sm: ts2 is the row perspective
-        #
-        # if diagonal:
-        #   diagional sm is calculated and upper/lower triangular == None
-        # else:
-        #   upper/lower triangular is calculated and diagonal == None
-        di_similarity_matrix, ut_similarity_matrix, lt_similarity_matrix = (
-            utils.calculate_similarity_matrices(ts1, ts2, diagonal, GAMMA)
-        )
-
-        # line 51 for offsets_indices explanation
-        ts1_offsets, ts2_offsets = offsets_indices[comparison_index]
-
-        # offsets_indices[i] returns a tuple, e.g. [(0, 1), (1, 2)]
-        # mapped to the global_offets:
-        #   - the first tuple element returns the start index of the global rows for ts1
-        #   - the second tuple element returns the end index of the global rows for ts1
-        #   - the first tuple element returns the start index of the global columns for ts2
-        #   - the second tuple element returns the end index of the global columns for ts2
-        row_start, row_end = (
-            global_offsets[ts1_offsets[0]],
-            global_offsets[ts1_offsets[1]],
-        )
-        col_start, col_end = (
-            global_offsets[ts2_offsets[0]],
-            global_offsets[ts2_offsets[1]],
-        )
-
-        if diagonal:
-            global_similarity_matrix[row_start:row_end, col_start:col_end] = (
-                di_similarity_matrix
-            )
-            cumulative_similarity_matrix = (
-                utils.calculate_cumulative_similarity_matrices(
-                    di_similarity_matrix, diagonal, STEP_SIZES
-                )
-            )
-        else:
-            global_similarity_matrix[row_start:row_end, col_start:col_end] = (
-                ut_similarity_matrix
-            )
-            cumulative_similarity_matrix = (
-                utils.calculate_cumulative_similarity_matrices(
-                    ut_similarity_matrix, diagonal, STEP_SIZES
-                )
-            )
-
-        # create a mask for fnding the local warping paths
-        mask = np.full(cumulative_similarity_matrix.shape, False)
-        # add the diagonal + v_width to the mask for self comparisons
-        if diagonal:
-            for i in range(len(mask)):
-                mask[i, max(0, i - V_WIDTH) : i + V_WIDTH + 1] = True
-
-        sm_tuple = (di_similarity_matrix, ut_similarity_matrix, lt_similarity_matrix)
-        global_start_index_tuple = (row_start, col_start)
-        # depending on the type of comparison either return:
-        #   diagonal comparison: diagonal paths
-        #   non-diagonal comparison:
-        #       upper triangular paths of the comparison itself, e.g. global index (0,1)
-        #       lower triangular paths are mirrored paths of the mirrored comparison e.g. global index (1,0)
-        di_paths, ut_paths, lt_paths = utils.find_local_warping_paths(
-            sm_tuple,
-            cumulative_similarity_matrix,
+        args = (
+            comparison_index,
+            ts1,
+            ts2,
             diagonal,
+            offsets_indices,
+            global_offsets,
+            GAMMA,
             STEP_SIZES,
             L_MIN,
             V_WIDTH,
-            mask,
-            global_start_index_tuple,
         )
+        args_list.append(args)
 
-        if diagonal and di_paths is not None:
-            # (r_start, r_end), (c_start, c_end)
-            # (i, i+1)        , (j, j+1)
-            # 0: (0,1) (0,1) //                //
-            #                // 3: (1,2) (1,2) //
-            #                                  // 5: (2,3) (2,3)
-            # append to the global column of ts1_offets[0] (=current) for diagonal paths
-            global_column_dict_lists_path[ts1_offsets[0]].append(di_paths)
-            logger.info(
-                msg=f'Found {len(di_paths)} diagonal paths in total for comparison {comparison_index + 1}.\n'
-            )
-        elif ut_paths is not None and lt_paths is not None:
-            # (r_start, r_end), (c_start, c_end)
-            # (i, i+1)        , (j, j+1)
-            #                // 1: (0,1) (1,2) // 2: (0,1) (2,3)
-            #                //                // 4: (1,2) (2,3)
-            #                                  //
-            # append to the global column of ts2_offsets[0] (=current) for upper triangular paths
-            global_column_dict_lists_path[ts2_offsets[0]].append(ut_paths)
-            # append to the global column of ts1_offsets[0] (=previous) for lower triangular paths
-            global_column_dict_lists_path[ts1_offsets[0]].append(lt_paths)
-            logger.info(
-                msg=f'Found {len(ut_paths)} upper triangular paths and {len(lt_paths)} lower triangular paths in total for comparison {comparison_index + 1}.\n'
-            )
+    # manager to manage the shared dict
+    manager = multiprocessing.Manager()
+    # set up a dict to hold all the lists of path objects for each global column
+    global_column_dict_lists_path = manager.dict({i: manager.list() for i in range(n)})
+    num_processes = multiprocessing.cpu_count()
+    pool = multiprocessing.Pool(
+        processes=num_processes,
+        initializer=logger.worker_configurer,
+        initargs=(log_queue,),
+    )
+    try:
+        results = pool.map(process_comparison, args_list)
+        for result in results:
+            for column_index, paths in result:
+                global_column_dict_lists_path[column_index].append(paths)
+    finally:
+        pool.close()
+        pool.join()
+        logger.stop_listener()
 
     # set up a dict to hold the concatenated lists of path objects for each global column
     global_column_dict_path = {}
@@ -234,29 +168,16 @@ if __name__ == '__main__':
         global_column_dict_path[column] = typed.List.empty_list(
             path_class.Path.class_type.instance_type  # type: ignore
         )
-        for path in list(chain.from_iterable(global_column_dict_lists_path[column])):
+        for path_tuple in list(
+            chain.from_iterable(global_column_dict_lists_path[column])
+        ):
+            path = path_class.Path(path_tuple[0], path_tuple[1])
             global_column_dict_path[column].append(path)
 
-    fig, axs = vis.plot_global_sm_and_column_warping_paths(
-        timeseries_list,
-        global_similarity_matrix,
-        global_column_dict_path,
-    )
-
     # find x motif representatives in the global column paths
-    x = 10
+    x = 100
     motif_representatives = utils.find_motif_representatives(
         x, global_offsets, global_column_dict_path, L_MIN, L_MAX, OVERLAP
     )
 
-    logger.info(
-        msg=f'Found {len(motif_representatives)} motif representatives in total.\n'
-    )
-
-    utils.visualize_motif_representatives(
-        motif_representatives,
-        global_column_dict_path,
-        timeseries_list,
-        global_similarity_matrix,
-        mask=np.full(global_similarity_matrix.shape[0], False),
-    )
+    print(f'Found {len(motif_representatives)} motif representatives in total.\n')
