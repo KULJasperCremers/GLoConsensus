@@ -2,6 +2,7 @@ import glob
 import logging
 import multiprocessing
 import os
+import time
 from itertools import chain, combinations, combinations_with_replacement
 
 import logger
@@ -118,6 +119,7 @@ if __name__ == '__main__':
         else combinations(timeseries_list, 2)
     )
 
+    comparison_timer_start = time.perf_counter()
     # PARALLELIZATION setup:
     args_list = []
     for comparison_index, (ts1, ts2) in enumerate(comparisons):
@@ -162,6 +164,11 @@ if __name__ == '__main__':
         pool.join()
         logger.stop_listener()
 
+    comparison_timer_end = time.perf_counter()
+    comparison_timer = comparison_timer_end - comparison_timer_start
+
+    motif_timer_start = time.perf_counter()
+
     # set up a dict to hold the concatenated lists of path objects for each global column
     global_column_dict_path = {}
     for column in global_column_dict_lists_path:
@@ -174,6 +181,9 @@ if __name__ == '__main__':
             path = path_class.Path(path_tuple[0], path_tuple[1])
             global_column_dict_path[column].append(path)
 
+    print(
+        f'Starting the numba motif representative finder...\nProcessing {len(global_column_dict_path)} global columns.'
+    )
     # find x motif representatives in the global column paths
     x = 100
     motif_representatives = utils.find_motif_representatives(
@@ -181,3 +191,10 @@ if __name__ == '__main__':
     )
 
     print(f'Found {len(motif_representatives)} motif representatives in total.\n')
+
+    motif_timer_end = time.perf_counter()
+    motif_timer = motif_timer_end - motif_timer_start
+
+    print(
+        f'Performed {total_comparisons} comparisons in {comparison_timer:.2f} seconds.\nFound {len(motif_representatives)} in {motif_timer:.2f} seconds.'
+    )
