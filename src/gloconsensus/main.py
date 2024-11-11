@@ -145,60 +145,38 @@ if __name__ == '__main__':
         )
         args_list.append(args)
 
-    # manager to manage the shared dict
-    manager = multiprocessing.Manager()
     # set up a dict to hold all the lists of path objects for each global column
-    global_column_dict_lists_path = manager.dict({i: manager.list() for i in range(n)})
+    global_column_dict_lists_path = {i: [] for i in range(n)}
     num_processes = multiprocessing.cpu_count()
-    pool = multiprocessing.Pool(
-        processes=num_processes,
-        initializer=logger.worker_configurer,
-        initargs=(log_queue,),
-    )
     try:
-        results = pool.map(process_comparison, args_list)
-        for result in results:
-            for column_index, paths in result:
-                global_column_dict_lists_path[column_index].append(paths)
+        with multiprocessing.Pool(
+            processes=num_processes,
+            initializer=logger.worker_configurer,
+            initargs=(log_queue,),
+        ) as pool:
+            results = pool.map(process_comparison, args_list)
+            for result in results:
+                for column_index, paths in result:
+                    global_column_dict_lists_path[column_index].append(paths)
     finally:
-        pool.close()
-        pool.join()
         logger.stop_listener()
 
     comparison_timer_end = time.perf_counter()
     comparison_timer = comparison_timer_end - comparison_timer_start
 
     motif_timer_start = time.perf_counter()
-
-    # set up a dict to hold the concatenated lists of path objects for each global column
-    global_column_dict_path = {}
-    for column in global_column_dict_lists_path:
-        global_column_dict_path[column] = typed.List.empty_list(
-            path_class.Path.class_type.instance_type  # type: ignore
-        )
-        for path_tuple in list(
-            chain.from_iterable(global_column_dict_lists_path[column])
-        ):
-            path = path_class.Path(path_tuple[0], path_tuple[1])
-            global_column_dict_path[column].append(path)
-
-    print(f'Processing {len(global_column_dict_path)} global columns.')
+    print(f'Processing {len(global_column_dict_lists_path)} global columns.')
     # find x motif representatives in the global column paths
     x = 100
-    # motif_representatives = utils.find_motif_representatives(
-    # x, global_offsets, global_column_dict_path, L_MIN, L_MAX, OVERLAP
-    # )
-    motif_representatives_generator = utils.find_motif_representatives(
+    motif_representatives = utils.find_motif_representatives(
         x, global_offsets, global_column_dict_lists_path, L_MIN, L_MAX, OVERLAP
     )
-    motif_representatives = list(motif_representatives_generator)
     print(f'Found {len(motif_representatives)} motif representatives in total.\n')
-
     motif_timer_end = time.perf_counter()
     motif_timer = motif_timer_end - motif_timer_start
 
     print(
-        f'Performed {total_comparisons} comparisons in {comparison_timer:.2f} seconds.\nFound {len(motif_representatives)} in {motif_timer:.2f} seconds.'
+        f'Performed {total_comparisons} comparisons in {comparison_timer:.2f} seconds.\nFound {len(motif_representatives)} motifs in {motif_timer:.2f} seconds.'
     )
 
     for mr in motif_representatives:
