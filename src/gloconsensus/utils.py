@@ -140,16 +140,17 @@ def find_local_warping_paths(
 def find_motif_representatives(
     x: int,
     global_offsets: np.ndarray,
-    global_column_dict_path: dict[
-        int, types.ListType(path_class.Path.class_type.instance_type)  # type: ignore
-    ],
+    # global_column_dict_path: dict[
+    # int, types.ListType(path_class.Path.class_type.instance_type)  # type: ignore
+    # ],
+    global_column_dict_lists_path,
     L_MIN: int,
     L_MAX: int,
     OVERLAP: float,
 ) -> list[MotifRepresentative]:
     motif_representatives = []
     for motif_rep in mf.find_motifs_representativesV3(
-        x, global_offsets, global_column_dict_path, L_MIN, L_MAX, OVERLAP
+        x, global_offsets, global_column_dict_lists_path, L_MIN, L_MAX, OVERLAP
     ):
         motif_representatives.append(motif_rep)
 

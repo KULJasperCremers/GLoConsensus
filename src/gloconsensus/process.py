@@ -1,9 +1,49 @@
 import logging
+from itertools import chain
 
+import candidate_finder as cf
 import numpy as np
+import path as path_class
 import utils
+from numba import typed
 
 process_logger = logging.getLogger()
+
+
+def process_candidate(args) -> tuple[np.int32, tuple[int, int], float]:
+    (
+        column_index,
+        column_smask,
+        column_emask,
+        mask,
+        global_column_dict_list,
+        start_offset,
+        L_MIN,
+        L_MAX,
+        OVERLAP,
+    ) = args
+    process_logger.info(f'Processing column {column_index + 1}.')
+
+    global_column_paths = typed.List.empty_list(
+        path_class.Path.class_type.instance_type  # type: ignore
+    )
+    for path_tuple in list(chain.from_iterable(global_column_dict_list)):
+        path = path_class.Path(path_tuple[0], path_tuple[1])
+        global_column_paths.append(path)
+
+    # TODO: make utils call here
+    candidate, fitness = cf.find_candidatesV3(
+        column_smask,
+        column_emask,
+        mask,
+        global_column_paths,
+        start_offset,
+        L_MIN,
+        L_MAX,
+        OVERLAP,
+    )
+
+    return column_index, candidate, fitness
 
 
 def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarray]]]]:
@@ -96,9 +136,6 @@ def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarra
         #                                  // 5: (2,3) (2,3)
         # append to the global column of ts1_offets[0] (=current) for diagonal paths
         result.append((ts1_offsets[0], di_paths))
-        process_logger.info(
-            msg=f'Found {len(di_paths)} diagonal paths in total for comparison {comparison_index + 1}.\n'
-        )
     elif ut_paths is not None and lt_paths is not None:
         # (r_start, r_end), (c_start, c_end)
         # (i, i+1)        , (j, j+1)
@@ -109,8 +146,5 @@ def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarra
         result.append((ts2_offsets[0], ut_paths))
         # append to the global column of ts1_offsets[0] (=previous) for lower triangular paths
         result.append((ts1_offsets[0], lt_paths))
-        process_logger.info(
-            msg=f'Found {len(ut_paths)} upper triangular paths and {len(lt_paths)} lower triangular paths in total for comparison {comparison_index + 1}.\n'
-        )
 
     return result

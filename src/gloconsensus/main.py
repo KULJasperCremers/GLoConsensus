@@ -9,6 +9,7 @@ import logger
 import numpy as np
 import path as path_class
 import utils
+import visualize as vis
 from numba import typed
 from process import process_comparison
 
@@ -181,15 +182,16 @@ if __name__ == '__main__':
             path = path_class.Path(path_tuple[0], path_tuple[1])
             global_column_dict_path[column].append(path)
 
-    print(
-        f'Starting the numba motif representative finder...\nProcessing {len(global_column_dict_path)} global columns.'
-    )
+    print(f'Processing {len(global_column_dict_path)} global columns.')
     # find x motif representatives in the global column paths
     x = 100
-    motif_representatives = utils.find_motif_representatives(
-        x, global_offsets, global_column_dict_path, L_MIN, L_MAX, OVERLAP
+    # motif_representatives = utils.find_motif_representatives(
+    # x, global_offsets, global_column_dict_path, L_MIN, L_MAX, OVERLAP
+    # )
+    motif_representatives_generator = utils.find_motif_representatives(
+        x, global_offsets, global_column_dict_lists_path, L_MIN, L_MAX, OVERLAP
     )
-
+    motif_representatives = list(motif_representatives_generator)
     print(f'Found {len(motif_representatives)} motif representatives in total.\n')
 
     motif_timer_end = time.perf_counter()
@@ -198,3 +200,12 @@ if __name__ == '__main__':
     print(
         f'Performed {total_comparisons} comparisons in {comparison_timer:.2f} seconds.\nFound {len(motif_representatives)} in {motif_timer:.2f} seconds.'
     )
+
+    for mr in motif_representatives:
+        vis.plot_motif_set(
+            timeseries_list,
+            mr.representative,
+            mr.motif_set,
+            mr.induced_paths,
+            mr.fitness,
+        )
