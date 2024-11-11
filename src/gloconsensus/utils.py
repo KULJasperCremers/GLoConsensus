@@ -1,5 +1,6 @@
 import pickle
-from typing import Optional, Union
+from multiprocessing import shared_memory
+from typing import Generator, Optional, Union
 
 import motif_finder as mf
 import numpy as np
@@ -134,26 +135,36 @@ def find_local_warping_paths(
         return (None, ut_paths, lt_paths)
 
 
+def transfer_global_columns_to_shared_memory(global_column_dict_lists_paths):
+    shared_memory_block_dict = {}
+    for column_index in global_column_dict_lists_paths.keys():
+        global_column = list(global_column_dict_lists_paths[column_index])
+        serialized_global_column = pickle.dumps(global_column)
+        shared_memory_block = shared_memory.SharedMemory(
+            create=True, size=len(serialized_global_column)
+        )
+        shared_memory_block.buf[: len(serialized_global_column)] = (
+            serialized_global_column
+        )
+        shared_memory_block_dict[column_index] = shared_memory_block
+
+    return shared_memory_block_dict
+
+
 def find_motif_representatives(
     x: int,
     global_offsets: np.ndarray,
     # global_column_dict_path: dict[
     # int, types.ListType(path_class.Path.class_type.instance_type)  # type: ignore
     # ],
-    global_column_dict_lists_path,
+    shared_memory_block_dict,
     L_MIN: int,
     L_MAX: int,
     OVERLAP: float,
-) -> list[MotifRepresentative]:
-    motif_representatives_gen = mf.find_motifs_representativesV3(
-        x, global_offsets, global_column_dict_lists_path, L_MIN, L_MAX, OVERLAP
+) -> Generator[MotifRepresentative, None, None]:
+    return mf.find_motifs_representativesV3(
+        x, global_offsets, shared_memory_block_dict, L_MIN, L_MAX, OVERLAP
     )
-    try:
-        motif_representatives = list(motif_representatives_gen)
-    finally:
-        motif_representatives_gen.close()
-
-    return motif_representatives
 
 
 def estimate_tau_symmetric(

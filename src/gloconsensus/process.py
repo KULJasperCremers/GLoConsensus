@@ -19,7 +19,7 @@ def process_candidate(args) -> tuple[np.int32, tuple[int, int], float]:
         mask_name,
         mask_shape,
         mask_dtype,
-        global_column_dict_list,
+        global_column_list_paths,
         start_offset,
         L_MIN,
         L_MAX,
@@ -27,15 +27,17 @@ def process_candidate(args) -> tuple[np.int32, tuple[int, int], float]:
     ) = args
     process_logger.info(f'Processing column {column_index + 1}.')
 
+    # use the shared memory mask reference
     mask_shared_memory_block = shared_memory.SharedMemory(name=mask_name)
     shared_mask = np.ndarray(
         mask_shape, dtype=mask_dtype, buffer=mask_shared_memory_block.buf
     )
 
+    # unpack the global dict to set up the numba jitclass Path objects
     global_column_paths = typed.List.empty_list(
         path_class.Path.class_type.instance_type  # type: ignore
     )
-    for path_tuple in list(chain.from_iterable(global_column_dict_list)):
+    for path_tuple in list(chain.from_iterable(global_column_list_paths)):
         path = path_class.Path(path_tuple[0], path_tuple[1])
         global_column_paths.append(path)
 
@@ -50,11 +52,10 @@ def process_candidate(args) -> tuple[np.int32, tuple[int, int], float]:
         OVERLAP,
     )
 
-    mask_shared_memory_block.close()
     return column_index, candidate, fitness
 
 
-def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarray]]]]:
+def process_comparison(args, global_column_dict_lists_paths) -> None:
     (
         comparison_index,
         ts1,
@@ -135,7 +136,6 @@ def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarra
         global_start_index_tuple,
     )
 
-    result: list[tuple[int, list[tuple[np.ndarray, np.ndarray]]]] = []
     if diagonal and di_paths is not None:
         # (r_start, r_end), (c_start, c_end)
         # (i, i+1)        , (j, j+1)
@@ -143,7 +143,7 @@ def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarra
         #                // 3: (1,2) (1,2) //
         #                                  // 5: (2,3) (2,3)
         # append to the global column of ts1_offets[0] (=current) for diagonal paths
-        result.append((ts1_offsets[0], di_paths))
+        global_column_dict_lists_paths[ts1_offsets[0]].append(di_paths)
     elif ut_paths is not None and lt_paths is not None:
         # (r_start, r_end), (c_start, c_end)
         # (i, i+1)        , (j, j+1)
@@ -151,8 +151,6 @@ def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarra
         #                //                // 4: (1,2) (2,3)
         #                                  //
         # append to the global column of ts2_offsets[0] (=current) for upper triangular paths
-        result.append((ts2_offsets[0], ut_paths))
+        global_column_dict_lists_paths[ts2_offsets[0]].append(ut_paths)
         # append to the global column of ts1_offsets[0] (=previous) for lower triangular paths
-        result.append((ts1_offsets[0], lt_paths))
-
-    return result
+        global_column_dict_lists_paths[ts1_offsets[0]].append(lt_paths)

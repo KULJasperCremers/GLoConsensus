@@ -3,14 +3,13 @@ import logging
 import multiprocessing
 import os
 import time
-from itertools import chain, combinations, combinations_with_replacement
+from functools import partial
+from itertools import combinations, combinations_with_replacement
 
 import logger
 import numpy as np
-import path as path_class
 import utils
 import visualize as vis
-from numba import typed
 from process import process_comparison
 
 main_logger = logging.getLogger()
@@ -52,7 +51,17 @@ if __name__ == '__main__':
         'ALS04',
         'ALS05',
     ]
-    scenario_ids = ['scenario1']
+    scenario_ids = [
+        'scenario1',
+        'scenario2',
+        'scenario3',
+        'scenario4',
+        'scenario5',
+        'scenario6',
+        'scenario7',
+        'scenario8',
+        'scenario9',
+    ]
     time_ids = [
         'time1',
         'time2',
@@ -64,6 +73,7 @@ if __name__ == '__main__':
         'time8',
         'time9',
     ]
+    # all ALS patient data
     timeseries_list = utils.filter_time_series(
         patient_data, patient_ids, scenario_ids, time_ids
     )
@@ -131,6 +141,7 @@ if __name__ == '__main__':
         # boolean to determine if the current comparison is a self comparison or not
         diagonal = ts1_index == ts2_index and INCLUDE_DIAGONAL
 
+        # all the arguments that need to be passed to each comparison worker
         args = (
             comparison_index,
             ts1,
@@ -145,39 +156,57 @@ if __name__ == '__main__':
         )
         args_list.append(args)
 
-    # set up a dict to hold all the lists of path objects for each global column
-    global_column_dict_lists_path = {i: [] for i in range(n)}
-    num_processes = multiprocessing.cpu_count()
-    try:
-        with multiprocessing.Pool(
+    # set up a global dict manager
+    # ensure the manager stays in scope and alive when scaled up
+    with multiprocessing.Manager() as global_column_manager:
+        # set up the global dict to be shared in worker threads
+        global_column_dict_lists_paths = global_column_manager.dict(
+            {column_index: global_column_manager.list() for column_index in range(n)}
+        )
+
+        num_processes = multiprocessing.cpu_count()
+        pool = multiprocessing.Pool(
             processes=num_processes,
             initializer=logger.worker_configurer,
             initargs=(log_queue,),
-        ) as pool:
-            results = pool.map(process_comparison, args_list)
-            for result in results:
-                for column_index, paths in result:
-                    global_column_dict_lists_path[column_index].append(paths)
-    finally:
-        logger.stop_listener()
+        )
+        # use partial to pass the global dict to the comparison workers
+        comparison_worker_func = partial(
+            process_comparison,
+            global_column_dict_lists_paths=global_column_dict_lists_paths,
+        )
+        pool.map(comparison_worker_func, args_list)
+        pool.close()
+        pool.join()
 
-    comparison_timer_end = time.perf_counter()
-    comparison_timer = comparison_timer_end - comparison_timer_start
+        comparison_timer_end = time.perf_counter()
+        comparison_timer = comparison_timer_end - comparison_timer_start
+
+        # transfer the global columns to shared memory
+        shared_memory_block_dict = utils.transfer_global_columns_to_shared_memory(
+            global_column_dict_lists_paths
+        )
 
     motif_timer_start = time.perf_counter()
-    print(f'Processing {len(global_column_dict_lists_path)} global columns.')
+    print(f'Processing {len(shared_memory_block_dict)} global columns.')
     # find x motif representatives in the global column paths
     x = 100
-    motif_representatives = utils.find_motif_representatives(
-        x, global_offsets, global_column_dict_lists_path, L_MIN, L_MAX, OVERLAP
+    motif_representatives = []
+    motif_representatives_gen = utils.find_motif_representatives(
+        x, global_offsets, shared_memory_block_dict, L_MIN, L_MAX, OVERLAP
     )
-    print(f'Found {len(motif_representatives)} motif representatives in total.\n')
+    for motif_representative in motif_representatives_gen:
+        motif_representatives.append(motif_representative)
+
     motif_timer_end = time.perf_counter()
     motif_timer = motif_timer_end - motif_timer_start
 
     print(
         f'Performed {total_comparisons} comparisons in {comparison_timer:.2f} seconds.\nFound {len(motif_representatives)} motifs in {motif_timer:.2f} seconds.'
     )
+
+    motif_representatives_gen.close()
+    logger.stop_listener()
 
     for mr in motif_representatives:
         vis.plot_motif_set(
