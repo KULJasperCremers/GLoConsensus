@@ -56,9 +56,9 @@ def find_local_warping_paths(
     mask: np.ndarray,
     global_start_index_tuple: tuple[int, int],
 ) -> tuple[
-    Optional[list[tuple[np.ndarray, np.ndarray]]],
-    Optional[list[tuple[np.ndarray, np.ndarray]]],
-    Optional[list[tuple[np.ndarray, np.ndarray]]],
+    Optional[list[tuple[np.ndarray, np.ndarray, np.ndarray]]],
+    Optional[list[tuple[np.ndarray, np.ndarray, np.ndarray]]],
+    Optional[list[tuple[np.ndarray, np.ndarray, np.ndarray]]],
 ]:
     di_sm, ut_sm, lt_sm = sm_tuple
     row_start, col_start = global_start_index_tuple
@@ -70,15 +70,16 @@ def find_local_warping_paths(
     if diagonal and di_sm is not None:
         # hardcode the diagonal path because we already masked it
         diagonal_indices = np.arange(len(di_sm))
-        diagonal_path = np.stack((diagonal_indices, diagonal_indices), axis=1)
-        diagonal_path_similarities = di_sm[diagonal_indices, diagonal_indices]
-        # map the local path to the global comparison matrix using the global indices
-        global_diagonal_path = diagonal_path + (row_start, col_start)
+        rows = diagonal_indices
+        cols = diagonal_indices
+        global_rows = rows + row_start
+        global_cols = cols + col_start
+        sims = di_sm[rows, cols]
         di_paths.append(
-            # ensure paths are serializable for multiprocessing!
             (
-                global_diagonal_path.astype(np.int32),
-                diagonal_path_similarities.astype(np.float32),
+                global_rows.astype(np.int32),
+                global_cols.astype(np.int32),
+                sims.astype(np.float32)
             )
         )
 
@@ -96,7 +97,8 @@ def find_local_warping_paths(
             di_paths.append(
                 # ensure paths are serializable for multiprocessing!
                 (
-                    np.stack((global_rows, global_cols), axis=1).astype(np.int32),
+                    global_rows.astype(np.int32),
+                    global_cols.astype(np.int32),
                     found_path_similarities.astype(np.float32),
                 )
             )
@@ -106,7 +108,8 @@ def find_local_warping_paths(
             ut_paths.append(
                 # ensure paths are serializable for multiprocessing!
                 (
-                    np.stack((global_rows, global_cols), axis=1).astype(np.int32),
+                    global_rows.astype(np.int32),
+                    global_cols.astype(np.int32),
                     found_path_similarities.astype(np.float32),
                 )
             )
@@ -115,16 +118,15 @@ def find_local_warping_paths(
         # comparison (0,1) is mirrored to (1,0) in the global comparison matrix
         if not diagonal and lt_sm is not None:
             mirrored_rows = found_path[:, 1]
-            global_mirorred_rows = mirrored_rows + col_start  # also mirror start
+            global_mirrored_rows = mirrored_rows + col_start  # also mirror start
             mirrored_cols = found_path[:, 0]
-            global_mirorred_cols = mirrored_cols + row_start  # also mirror start
+            global_mirrored_cols = mirrored_cols + row_start  # also mirror start
             mirrored_found_path_similarities = lt_sm[mirrored_rows, mirrored_cols]
             lt_paths.append(
                 # ensure paths are serializable for multiprocessing
                 (
-                    np.stack(
-                        (global_mirorred_rows, global_mirorred_cols), axis=1
-                    ).astype(np.int32),
+                    global_mirrored_rows.astype(np.int32),
+                    global_mirrored_cols.astype(np.int32),
                     mirrored_found_path_similarities.astype(np.float32),
                 )
             )

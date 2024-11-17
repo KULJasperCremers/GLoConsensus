@@ -12,6 +12,8 @@ import utils
 import visualize as vis
 from process import process_comparison
 
+from joblib import Parallel, delayed
+
 main_logger = logging.getLogger()
 
 # clean the plot map before running GLoConsensus
@@ -47,31 +49,31 @@ if __name__ == '__main__':
     patient_ids = [
         'ALS01',
         'ALS02',
-        'ALS03',
-        'ALS04',
-        'ALS05',
+        #'ALS03',
+        #'ALS04',
+        #'ALS05',
     ]
     scenario_ids = [
         'scenario1',
         'scenario2',
-        'scenario3',
-        'scenario4',
-        'scenario5',
-        'scenario6',
-        'scenario7',
-        'scenario8',
-        'scenario9',
+        #'scenario3',
+        #'scenario4',
+        #'scenario5',
+        #'scenario6',
+        #'scenario7',
+        #'scenario8',
+        #'scenario9',
     ]
     time_ids = [
         'time1',
         'time2',
-        'time3',
-        'time4',
-        'time5',
-        'time6',
-        'time7',
-        'time8',
-        'time9',
+        #'time3',
+        #'time4',
+        #'time5',
+        #'time6',
+        #'time7',
+        #'time8',
+        #'time9',
     ]
     # all ALS patient data
     timeseries_list = utils.filter_time_series(
@@ -156,63 +158,49 @@ if __name__ == '__main__':
         )
         args_list.append(args)
 
-    # set up a global dict manager
-    # ensure the manager stays in scope and alive when scaled up
-    with multiprocessing.Manager() as global_column_manager:
-        # set up the global dict to be shared in worker threads
-        global_column_dict_lists_paths = global_column_manager.dict(
-            {column_index: global_column_manager.list() for column_index in range(n)}
-        )
+    global_column_dict_lists_paths = {column_index: [] for column_index in range(n)}
 
-        num_processes = multiprocessing.cpu_count()
-        pool = multiprocessing.Pool(
-            processes=num_processes,
-            initializer=logger.worker_configurer,
-            initargs=(log_queue,),
-        )
-        # use partial to pass the global dict to the comparison workers
-        comparison_worker_func = partial(
-            process_comparison,
-            global_column_dict_lists_paths=global_column_dict_lists_paths,
-        )
-        pool.map(comparison_worker_func, args_list)
-        pool.close()
-        pool.join()
-
-        comparison_timer_end = time.perf_counter()
-        comparison_timer = comparison_timer_end - comparison_timer_start
-
-        # transfer the global columns to shared memory
-        shared_memory_block_dict = utils.transfer_global_columns_to_shared_memory(
-            global_column_dict_lists_paths
-        )
-
-    motif_timer_start = time.perf_counter()
-    print(f'Processing {len(shared_memory_block_dict)} global columns.')
-    # find x motif representatives in the global column paths
-    x = 100
-    motif_representatives = []
-    motif_representatives_gen = utils.find_motif_representatives(
-        x, global_offsets, shared_memory_block_dict, L_MIN, L_MAX, OVERLAP
-    )
-    for motif_representative in motif_representatives_gen:
-        motif_representatives.append(motif_representative)
-
-    motif_timer_end = time.perf_counter()
-    motif_timer = motif_timer_end - motif_timer_start
-
-    print(
-        f'Performed {total_comparisons} comparisons in {comparison_timer:.2f} seconds.\nFound {len(motif_representatives)} motifs in {motif_timer:.2f} seconds.'
+    num_threads = multiprocessing.cpu_count()
+    worker_results = Parallel(n_jobs=num_threads, backend='threading')(
+        delayed(process_comparison)(args) for args in args_list
     )
 
-    motif_representatives_gen.close()
-    logger.stop_listener()
+    for result in worker_results:
+        for column_index, paths in result:
+            global_column_dict_lists_paths[column_index].extend(paths)
 
-    for mr in motif_representatives:
-        vis.plot_motif_set(
-            timeseries_list,
-            mr.representative,
-            mr.motif_set,
-            mr.induced_paths,
-            mr.fitness,
-        )
+    comparison_timer_end = time.perf_counter()
+    comparison_timer = comparison_timer_end - comparison_timer_start
+
+
+    print(f'Processing comparisons took {comparison_timer:.2f} seconds.')
+
+    #motif_timer_start = time.perf_counter()
+    #print(f'Processing {len(shared_memory_block_dict)} global columns.')
+    ## find x motif representatives in the global column paths
+    #x = 100
+    #motif_representatives = []
+    #motif_representatives_gen = utils.find_motif_representatives(
+        #x, global_offsets, shared_memory_block_dict, L_MIN, L_MAX, OVERLAP
+    #)
+    #for motif_representative in motif_representatives_gen:
+        #motif_representatives.append(motif_representative)
+
+    #motif_timer_end = time.perf_counter()
+    #motif_timer = motif_timer_end - motif_timer_start
+
+    #print(
+        #f'Performed {total_comparisons} comparisons in {comparison_timer:.2f} seconds.\nFound {len(motif_representatives)} motifs in {motif_timer:.2f} seconds.'
+    #)
+
+    #motif_representatives_gen.close()
+    #logger.stop_listener()
+
+    #for mr in motif_representatives:
+        #vis.plot_motif_set(
+            #timeseries_list,
+            #mr.representative,
+            #mr.motif_set,
+            #mr.induced_paths,
+            #mr.fitness,
+        #)

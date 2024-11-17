@@ -55,7 +55,7 @@ def process_candidate(args) -> tuple[np.int32, tuple[int, int], float]:
     return column_index, candidate, fitness
 
 
-def process_comparison(args, global_column_dict_lists_paths) -> None:
+def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarray, np.ndarray]]]]:
     (
         comparison_index,
         ts1,
@@ -135,6 +135,9 @@ def process_comparison(args, global_column_dict_lists_paths) -> None:
         mask,
         global_start_index_tuple,
     )
+    
+    # initialize an empty list to avoid using the global manager and return a result
+    results = []
 
     if diagonal and di_paths is not None:
         # (r_start, r_end), (c_start, c_end)
@@ -143,7 +146,9 @@ def process_comparison(args, global_column_dict_lists_paths) -> None:
         #                // 3: (1,2) (1,2) //
         #                                  // 5: (2,3) (2,3)
         # append to the global column of ts1_offets[0] (=current) for diagonal paths
-        global_column_dict_lists_paths[ts1_offsets[0]].append(di_paths)
+        global_column_index = ts1_offsets[0]
+        results.append((global_column_index, di_paths))
+
     elif ut_paths is not None and lt_paths is not None:
         # (r_start, r_end), (c_start, c_end)
         # (i, i+1)        , (j, j+1)
@@ -151,6 +156,10 @@ def process_comparison(args, global_column_dict_lists_paths) -> None:
         #                //                // 4: (1,2) (2,3)
         #                                  //
         # append to the global column of ts2_offsets[0] (=current) for upper triangular paths
-        global_column_dict_lists_paths[ts2_offsets[0]].append(ut_paths)
+        global_ut_column_index = ts2_offsets[0]
+        results.append((global_ut_column_index, ut_paths))
         # append to the global column of ts1_offsets[0] (=previous) for lower triangular paths
-        global_column_dict_lists_paths[ts1_offsets[0]].append(lt_paths)
+        global_lt_column_index = ts1_offsets[0]
+        results.append((global_lt_column_index, lt_paths))
+
+    return results
