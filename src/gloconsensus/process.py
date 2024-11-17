@@ -1,11 +1,10 @@
 import logging
-from itertools import chain
 
 import candidate_finder as cf
 import numpy as np
 import path as path_class
 import utils
-from numba import typed
+from numba import typed, types
 
 logger = logging.getLogger()
 
@@ -94,12 +93,14 @@ def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarra
     )
 
     if diagonal:
+        tau = utils.estimate_tau_symmetric(di_similarity_matrix)
         cumulative_similarity_matrix = utils.calculate_cumulative_similarity_matrices(
-            di_similarity_matrix, diagonal, STEP_SIZES
+            di_similarity_matrix, np.float32(tau), STEP_SIZES
         )
     else:
+        tau = utils.estimate_tau_assymmetric(ut_similarity_matrix)
         cumulative_similarity_matrix = utils.calculate_cumulative_similarity_matrices(
-            ut_similarity_matrix, diagonal, STEP_SIZES
+            ut_similarity_matrix, np.float32(tau), STEP_SIZES
         )
 
     # create a mask for fnding the local warping paths
@@ -109,28 +110,29 @@ def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarra
         for i in range(len(mask)):
             mask[i, max(0, i - V_WIDTH) : i + V_WIDTH + 1] = True
 
-    sm_tuple = (di_similarity_matrix, ut_similarity_matrix, lt_similarity_matrix)
-    global_start_index_tuple = (row_start, col_start)
     # depending on the type of comparison either return:
     #   diagonal comparison: diagonal paths
     #   non-diagonal comparison:
     #       upper triangular paths of the comparison itself, e.g. global index (0,1)
     #       lower triangular paths are mirrored paths of the mirrored comparison e.g. global index (1,0)
     di_paths, ut_paths, lt_paths = utils.find_local_warping_paths(
-        sm_tuple,
+        di_similarity_matrix,
+        ut_similarity_matrix,
+        lt_similarity_matrix,
         cumulative_similarity_matrix,
         diagonal,
         STEP_SIZES,
         L_MIN,
         V_WIDTH,
         mask,
-        global_start_index_tuple,
+        row_start,
+        col_start
     )
     
     # initialize an empty list to avoid using the global manager and return a result
     results = []
 
-    if diagonal and di_paths is not None:
+    if diagonal and di_paths is not typed.List.empty_list():
         # (r_start, r_end), (c_start, c_end)
         # (i, i+1)        , (j, j+1)
         # 0: (0,1) (0,1) //                //
@@ -140,7 +142,7 @@ def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarra
         global_column_index = ts1_offsets[0]
         results.append((global_column_index, di_paths))
 
-    elif ut_paths is not None and lt_paths is not None:
+    elif ut_paths is not typed.List.empty_list() and lt_paths is not typed.List.empty_list():
         # (r_start, r_end), (c_start, c_end)
         # (i, i+1)        , (j, j+1)
         #                // 1: (0,1) (1,2) // 2: (0,1) (2,3)

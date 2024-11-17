@@ -1,6 +1,6 @@
 import numpy as np
 import path as path_class
-from numba import boolean, float32, int32, njit, types
+from numba import boolean, float32, int32, njit, prange, types
 
 
 @njit(
@@ -13,7 +13,8 @@ from numba import boolean, float32, int32, njit, types
         int32,
         int32,
         float32,
-    )
+    ),
+    parallel=True
 )
 def find_candidatesV3(
     start_mask: np.ndarray,
@@ -38,19 +39,17 @@ def find_candidatesV3(
     path_start_indices = np.array([path.column_start for path in paths])
     path_end_indices = np.array([path.column_end for path in paths])
 
-    motif_start_indices = np.zeros(num_paths, dtype=np.int32)
-    motif_end_indices = np.zeros(num_paths, dtype=np.int32)
+    # store per-thread results
+    best_fitness_arr = np.zeros(n - L_MIN + 1, dtype=np.float32)
+    best_candidate_arr = np.zeros((n - L_MIN + 1, 2), dtype=np.int32)
 
-    crossing_start_indices = np.zeros(num_paths, dtype=np.int32)
-    crossing_end_indices = np.zeros(num_paths, dtype=np.int32)
-
-    best_fitness = 0.0
-    best_candidate = (0, n)
-
-    # local column indices
-    for start_index in range(n - L_MIN + 1):
+    # parallel loop over start_index
+    for start_index in prange(n - L_MIN + 1):
         if not start_mask[start_index]:
             continue
+
+        thread_best_fitness = 0.0
+        thread_best_candidate = (0,n)
 
         # map local indices to global indices
         global_start_index = start_index + start_offset
@@ -72,6 +71,11 @@ def find_candidatesV3(
             path_mask = start_indices_mask & end_indices_mask
             if sum(path_mask) < 2:
                 break
+
+            motif_start_indices = np.zeros(num_paths, dtype=np.int32)
+            motif_end_indices = np.zeros(num_paths, dtype=np.int32)
+            crossing_start_indices = np.zeros(num_paths, dtype=np.int32)
+            crossing_end_indices = np.zeros(num_paths, dtype=np.int32)
 
             for path_index in np.flatnonzero(path_mask):
                 path = paths[path_index]
@@ -144,9 +148,17 @@ def find_candidatesV3(
             if fit == 0.0:
                 continue
 
-            if fit > best_fitness:
+            if fit > thread_best_fitness:
                 # map the candidate to the global matrix
-                best_candidate = (global_start_index, global_end_index)
-                best_fitness = fit
+                thread_best_candidate = (global_start_index, global_end_index)
+                thread_best_fitness = fit
+
+        best_fitness_arr[start_index] = thread_best_fitness
+        best_candidate_arr[start_index] = thread_best_candidate
+
+    best_index = np.argmax(best_fitness_arr)
+    best_fitness = best_fitness_arr[best_index]
+    best_candidate = (best_candidate_arr[best_index][0],
+                      best_candidate_arr[best_index][1])
 
     return best_candidate, best_fitness

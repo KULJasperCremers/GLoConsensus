@@ -1,5 +1,4 @@
 import multiprocessing
-from itertools import chain
 from typing import Generator
 
 import numpy as np

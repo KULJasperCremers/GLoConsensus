@@ -46,24 +46,24 @@ if __name__ == '__main__':
     patient_ids = [
         'ALS01',
         'ALS02',
-        #'ALS03',
-        #'ALS04',
-        #'ALS05',
+        'ALS03',
+        'ALS04',
+        'ALS05',
     ]
     scenario_ids = [
         'scenario1',
         'scenario2',
-        #'scenario3',
-        #'scenario4',
-        #'scenario5',
-        #'scenario6',
-        #'scenario7',
-        #'scenario8',
-        #'scenario9',
+        'scenario3',
+        'scenario4',
+        'scenario5',
+        'scenario6',
+        'scenario7',
+        'scenario8',
+        'scenario9',
     ]
     time_ids = [
         'time1',
-        'time2',
+        #'time2',
         #'time3',
         #'time4',
         #'time5',
@@ -118,7 +118,7 @@ if __name__ == '__main__':
     # the amount of comparisons needed to set up the loop to fill the global column lists
     total_comparisons = n * (n + 1) // 2 if INCLUDE_DIAGONAL else n * (n - 1) // 2
     logger.info(
-        f'Performing {total_comparisons} comparisons in total to set up the global column lists.\n'
+        f'Performing {total_comparisons} comparisons in total to set up the global column lists.'
     )
     # timeseries comparisons set up for the loop to fill the global column lists
     #   combinations_with_replacements returns self comparisons, e.g. (ts1, ts1)
