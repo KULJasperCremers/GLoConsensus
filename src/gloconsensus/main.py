@@ -3,10 +3,9 @@ import logging
 import multiprocessing
 import os
 import time
-from functools import partial
 from itertools import combinations, combinations_with_replacement
 
-import logger
+from logger import configure_logging
 import numpy as np
 import utils
 import visualize as vis
@@ -14,7 +13,6 @@ from process import process_comparison
 
 from joblib import Parallel, delayed
 
-main_logger = logging.getLogger()
 
 # clean the plot map before running GLoConsensus
 for plot in glob.glob('./plots/*'):
@@ -31,9 +29,8 @@ V_WIDTH = L_MIN // 2
 OVERLAP = 0.0
 
 if __name__ == '__main__':
-    # PARALLELIZATION logging setup
-    logger.start_listener()
-    log_queue = logger.get_log_queue()
+    configure_logging()
+    logger = logging.getLogger()
 
     # DATA SETUP:
     #   can chose any number of patients ids:
@@ -120,7 +117,7 @@ if __name__ == '__main__':
 
     # the amount of comparisons needed to set up the loop to fill the global column lists
     total_comparisons = n * (n + 1) // 2 if INCLUDE_DIAGONAL else n * (n - 1) // 2
-    print(
+    logger.info(
         f'Performing {total_comparisons} comparisons in total to set up the global column lists.\n'
     )
     # timeseries comparisons set up for the loop to fill the global column lists
@@ -173,34 +170,33 @@ if __name__ == '__main__':
     comparison_timer = comparison_timer_end - comparison_timer_start
 
 
-    print(f'Processing comparisons took {comparison_timer:.2f} seconds.')
+    logger.info(f'Processing comparisons took {comparison_timer:.2f} seconds.')
 
-    #motif_timer_start = time.perf_counter()
-    #print(f'Processing {len(shared_memory_block_dict)} global columns.')
-    ## find x motif representatives in the global column paths
-    #x = 100
-    #motif_representatives = []
-    #motif_representatives_gen = utils.find_motif_representatives(
-        #x, global_offsets, shared_memory_block_dict, L_MIN, L_MAX, OVERLAP
-    #)
-    #for motif_representative in motif_representatives_gen:
-        #motif_representatives.append(motif_representative)
+    motif_timer_start = time.perf_counter()
+    logger.info(f'Processing {len(global_column_dict_lists_paths)} global columns.')
+    # find x motif representatives in the global column paths
+    x = 10
+    motif_representatives = []
+    motif_representatives_gen = utils.find_motif_representatives(
+        x, global_offsets, global_column_dict_lists_paths, L_MIN, L_MAX, OVERLAP
+    )
+    for motif_representative in motif_representatives_gen:
+        motif_representatives.append(motif_representative)
 
-    #motif_timer_end = time.perf_counter()
-    #motif_timer = motif_timer_end - motif_timer_start
+    motif_timer_end = time.perf_counter()
+    motif_timer = motif_timer_end - motif_timer_start
 
-    #print(
-        #f'Performed {total_comparisons} comparisons in {comparison_timer:.2f} seconds.\nFound {len(motif_representatives)} motifs in {motif_timer:.2f} seconds.'
-    #)
+    logger.info(
+        f'Performed {total_comparisons} comparisons in {comparison_timer:.2f} seconds.\nFound {len(motif_representatives)} motifs in {motif_timer:.2f} seconds.'
+    )
 
-    #motif_representatives_gen.close()
-    #logger.stop_listener()
+    motif_representatives_gen.close()
 
-    #for mr in motif_representatives:
-        #vis.plot_motif_set(
-            #timeseries_list,
-            #mr.representative,
-            #mr.motif_set,
-            #mr.induced_paths,
-            #mr.fitness,
-        #)
+    for mr in motif_representatives:
+        vis.plot_motif_set(
+            timeseries_list,
+            mr.representative,
+            mr.motif_set,
+            mr.induced_paths,
+            mr.fitness,
+        )

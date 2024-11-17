@@ -1,6 +1,5 @@
 import logging
 from itertools import chain
-from multiprocessing import shared_memory
 
 import candidate_finder as cf
 import numpy as np
@@ -8,43 +7,35 @@ import path as path_class
 import utils
 from numba import typed
 
-process_logger = logging.getLogger()
-
+logger = logging.getLogger()
 
 def process_candidate(args) -> tuple[np.int32, tuple[int, int], float]:
     (
         column_index,
         column_smask,
         column_emask,
-        mask_name,
-        mask_shape,
-        mask_dtype,
+        mask,
         global_column_list_paths,
         start_offset,
         L_MIN,
         L_MAX,
         OVERLAP,
     ) = args
-    process_logger.info(f'Processing column {column_index + 1}.')
-
-    # use the shared memory mask reference
-    mask_shared_memory_block = shared_memory.SharedMemory(name=mask_name)
-    shared_mask = np.ndarray(
-        mask_shape, dtype=mask_dtype, buffer=mask_shared_memory_block.buf
-    )
+    
+    logger.info(f'Processing column {column_index + 1}.')
 
     # unpack the global dict to set up the numba jitclass Path objects
     global_column_paths = typed.List.empty_list(
         path_class.Path.class_type.instance_type  # type: ignore
     )
-    for path_tuple in list(chain.from_iterable(global_column_list_paths)):
-        path = path_class.Path(path_tuple[0], path_tuple[1])
+    for path_tuple in global_column_list_paths:
+        path = path_class.Path(np.stack((path_tuple[0], path_tuple[1]), axis=1), path_tuple[2])
         global_column_paths.append(path)
 
     candidate, fitness = cf.find_candidatesV3(
         column_smask,
         column_emask,
-        shared_mask,
+        mask,
         global_column_paths,
         start_offset,
         L_MIN,
@@ -69,7 +60,7 @@ def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarra
         V_WIDTH,
     ) = args
 
-    process_logger.info(f'Processing comparison {comparison_index + 1}.')
+    logger.info(f'Processing comparison {comparison_index + 1}.')
 
     # similarity matrix calculations:
     #   diagonal sm: ts1 and ts2 are equal

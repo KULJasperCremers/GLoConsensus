@@ -11,7 +11,7 @@ from motif_representative import MotifRepresentative
 
 RHO = 0.8
 
-
+# TODO: numba jnit?
 def calculate_similarity_matrices(
     ts1: np.ndarray, ts2: np.ndarray, diagonal: bool, GAMMA: int
 ) -> tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
@@ -29,7 +29,7 @@ def calculate_similarity_matrices(
         )
         return None, ut_similarity_matrix, lt_similarity_matrix
 
-
+# TODO: numba njit?
 def calculate_cumulative_similarity_matrices(
     similarity_matrix: Optional[np.ndarray], is_diagonal: bool, STEP_SIZES: np.ndarray
 ) -> np.ndarray:
@@ -45,7 +45,7 @@ def calculate_cumulative_similarity_matrices(
         )
     return csm
 
-
+# TODO: numba njit?
 def find_local_warping_paths(
     sm_tuple: tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]],
     csm: np.ndarray,
@@ -137,35 +137,16 @@ def find_local_warping_paths(
         return (None, ut_paths, lt_paths)
 
 
-def transfer_global_columns_to_shared_memory(global_column_dict_lists_paths):
-    shared_memory_block_dict = {}
-    for column_index in global_column_dict_lists_paths.keys():
-        global_column = list(global_column_dict_lists_paths[column_index])
-        serialized_global_column = pickle.dumps(global_column)
-        shared_memory_block = shared_memory.SharedMemory(
-            create=True, size=len(serialized_global_column)
-        )
-        shared_memory_block.buf[: len(serialized_global_column)] = (
-            serialized_global_column
-        )
-        shared_memory_block_dict[column_index] = shared_memory_block
-
-    return shared_memory_block_dict
-
-
 def find_motif_representatives(
     x: int,
     global_offsets: np.ndarray,
-    # global_column_dict_path: dict[
-    # int, types.ListType(path_class.Path.class_type.instance_type)  # type: ignore
-    # ],
-    shared_memory_block_dict,
+    global_column_dict_lists_paths,
     L_MIN: int,
     L_MAX: int,
     OVERLAP: float,
 ) -> Generator[MotifRepresentative, None, None]:
     return mf.find_motifs_representativesV3(
-        x, global_offsets, shared_memory_block_dict, L_MIN, L_MAX, OVERLAP
+        x, global_offsets, global_column_dict_lists_paths, L_MIN, L_MAX, OVERLAP
     )
 
 
