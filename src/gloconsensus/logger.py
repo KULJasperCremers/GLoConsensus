@@ -1,6 +1,7 @@
 import logging
 import sys
 
+
 def configure_logging():
     log_format = '%(asctime)s | %(threadName)s | %(levelname)8s | %(message)s'
     date_format = '%Y-%m-%d %H:%M:%S'

@@ -4,9 +4,10 @@ import candidate_finder as cf
 import numpy as np
 import path as path_class
 import utils
-from numba import typed, types
+from numba import float32, int32, typed, types
 
 logger = logging.getLogger()
+
 
 def process_candidate(args) -> tuple[np.int32, tuple[int, int], float]:
     (
@@ -20,7 +21,7 @@ def process_candidate(args) -> tuple[np.int32, tuple[int, int], float]:
         L_MAX,
         OVERLAP,
     ) = args
-    
+
     logger.info(f'Processing column {column_index + 1}.')
 
     # unpack the global dict to set up the numba jitclass Path objects
@@ -28,7 +29,9 @@ def process_candidate(args) -> tuple[np.int32, tuple[int, int], float]:
         path_class.Path.class_type.instance_type  # type: ignore
     )
     for path_tuple in global_column_list_paths:
-        path = path_class.Path(np.stack((path_tuple[0], path_tuple[1]), axis=1), path_tuple[2])
+        path = path_class.Path(
+            np.stack((path_tuple[0], path_tuple[1]), axis=1), path_tuple[2]
+        )
         global_column_paths.append(path)
 
     candidate, fitness = cf.find_candidatesV3(
@@ -45,7 +48,12 @@ def process_candidate(args) -> tuple[np.int32, tuple[int, int], float]:
     return column_index, candidate, fitness
 
 
-def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarray, np.ndarray]]]]:
+tuple_type = types.Tuple((int32[:], int32[:], float32[:]))
+
+
+def process_comparison(
+    args,
+) -> list[tuple[int, list[tuple[np.ndarray, np.ndarray, np.ndarray]]]]:
     (
         comparison_index,
         ts1,
@@ -126,13 +134,13 @@ def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarra
         V_WIDTH,
         mask,
         row_start,
-        col_start
+        col_start,
     )
-    
+
     # initialize an empty list to avoid using the global manager and return a result
     results = []
 
-    if diagonal and di_paths is not typed.List.empty_list():
+    if diagonal and di_paths is not typed.List.empty_list(tuple_type):
         # (r_start, r_end), (c_start, c_end)
         # (i, i+1)        , (j, j+1)
         # 0: (0,1) (0,1) //                //
@@ -142,7 +150,9 @@ def process_comparison(args) -> list[tuple[int, list[tuple[np.ndarray, np.ndarra
         global_column_index = ts1_offsets[0]
         results.append((global_column_index, di_paths))
 
-    elif ut_paths is not typed.List.empty_list() and lt_paths is not typed.List.empty_list():
+    elif ut_paths is not typed.List.empty_list(
+        tuple_type
+    ) and lt_paths is not typed.List.empty_list(tuple_type):
         # (r_start, r_end), (c_start, c_end)
         # (i, i+1)        , (j, j+1)
         #                // 1: (0,1) (1,2) // 2: (0,1) (2,3)

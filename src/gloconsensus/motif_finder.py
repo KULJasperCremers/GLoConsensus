@@ -1,14 +1,15 @@
 import multiprocessing
+import threading
 from typing import Generator
 
 import numpy as np
 import path as path_class
 import path_finder as pf
+from joblib import Parallel, delayed
 from motif_representative import MotifRepresentative
 from numba import typed
 from process import process_candidate
-from joblib import Parallel, delayed
-import threading
+
 
 def find_motifs_representativesV3(
     max_amount: int,
@@ -23,7 +24,6 @@ def find_motifs_representativesV3(
     None,
 ]:
     """Generate motifs by finding and masking the best candidates based on fitness scores."""
-
     n = global_offsets[-1]
     start_mask = np.full(n, True, dtype=np.bool)
     end_mask = np.full(n, True, dtype=np.bool)
@@ -74,7 +74,7 @@ def find_motifs_representativesV3(
         results = Parallel(n_jobs=num_threads, backend='threading')(
             delayed(process_candidate)(args) for args in args_list
         )
-       
+
         for column_index, candidate, fitness in results:
             if candidate is not None and fitness > best_fitness:
                 best_fitness = fitness
@@ -89,9 +89,11 @@ def find_motifs_representativesV3(
             path_class.Path.class_type.instance_type  # type: ignore
         )
         for path_tuple in global_column_dict_lists_paths[best_column_index]:
-            path = path_class.Path(np.stack((path_tuple[0], path_tuple[1]), axis=1), path_tuple[2])
+            path = path_class.Path(
+                np.stack((path_tuple[0], path_tuple[1]), axis=1), path_tuple[2]
+            )
             global_column_paths.append(path)
-        
+
         with mask_lock:
             induced_paths = pf.find_induced_pathsV0(
                 start_index,

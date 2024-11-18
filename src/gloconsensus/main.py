@@ -5,14 +5,12 @@ import os
 import time
 from itertools import combinations, combinations_with_replacement
 
-from logger import configure_logging
 import numpy as np
 import utils
 import visualize as vis
-from process import process_comparison
-
 from joblib import Parallel, delayed
-
+from logger import configure_logging
+from process import process_comparison
 
 # clean the plot map before running GLoConsensus
 for plot in glob.glob('./plots/*'):
@@ -168,7 +166,6 @@ if __name__ == '__main__':
 
     comparison_timer_end = time.perf_counter()
     comparison_timer = comparison_timer_end - comparison_timer_start
-
 
     logger.info(f'Processing comparisons took {comparison_timer:.2f} seconds.')
 

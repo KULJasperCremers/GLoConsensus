@@ -7,24 +7,20 @@ import pandas as pd
 import path_finder as pf
 import similarity_matrix as sm
 from motif_representative import MotifRepresentative
-
 from numba import boolean, float32, int32, njit, typed, types
 
 RHO = 0.8
 
-@njit(types.Tuple((
-    float32[:,:], float32[:,:], float32[:,:]
-    ))(
-        float32[:,:],
-        float32[:,:],
-        boolean,
-        int32
+
+@njit(
+    types.Tuple((float32[:, :], float32[:, :], float32[:, :]))(
+        float32[:, :], float32[:, :], boolean, int32
     )
 )
 def calculate_similarity_matrices(
     ts1: np.ndarray, ts2: np.ndarray, diagonal: bool, GAMMA: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    zero_array = np.zeros((0,0), dtype=np.float32)
+    zero_array = np.zeros((0, 0), dtype=np.float32)
     if diagonal:
         di_similarity_matrix = sm.calculate_similarity_matrixV1(
             ts1, ts2, GAMMA, only_triu=True
@@ -39,19 +35,18 @@ def calculate_similarity_matrices(
         )
         return zero_array, ut_similarity_matrix, lt_similarity_matrix
 
-def estimate_tau_symmetric(
-    similarity_matrix: np.ndarray
-) -> np.float32:
+
+def estimate_tau_symmetric(similarity_matrix: np.ndarray) -> np.float32:
     return np.quantile(
         similarity_matrix[np.triu_indices(len(similarity_matrix))], RHO, axis=None
     )
 
-def estimate_tau_assymmetric(
-    similarity_matrix: np.ndarray
-) -> np.float32:
+
+def estimate_tau_assymmetric(similarity_matrix: np.ndarray) -> np.float32:
     return np.quantile(similarity_matrix, RHO, axis=None)
 
-@njit(float32[:,:](float32[:,:], float32, int32[:,:]))
+
+@njit(float32[:, :](float32[:, :], float32, int32[:, :]))
 def calculate_cumulative_similarity_matrices(
     similarity_matrix: np.ndarray, tau: np.float32, STEP_SIZES: np.ndarray
 ) -> np.ndarray:
@@ -62,24 +57,29 @@ def calculate_cumulative_similarity_matrices(
     )
     return csm
 
+
 tuple_type = types.Tuple((int32[:], int32[:], float32[:]))
+
+
 @njit(
-    types.Tuple((
-        types.ListType(tuple_type),
-        types.ListType(tuple_type),
-        types.ListType(tuple_type),
-    ))(
+    types.Tuple(
+        (
+            types.ListType(tuple_type),
+            types.ListType(tuple_type),
+            types.ListType(tuple_type),
+        )
+    )(
         float32[:, :],
         float32[:, :],
         float32[:, :],
         float32[:, :],
-        boolean,       
+        boolean,
         int32[:, :],
-        int32,         
-        int32,         
-        boolean[:, :],  
         int32,
-        int32        
+        int32,
+        boolean[:, :],
+        int32,
+        int32,
     )
 )
 def find_local_warping_paths(
@@ -104,7 +104,7 @@ def find_local_warping_paths(
     di_paths = typed.List.empty_list(tuple_type)
     ut_paths = typed.List.empty_list(tuple_type)
     lt_paths = typed.List.empty_list(tuple_type)
-    
+
     if diagonal and di_sm.shape[0] > 0:
         # hardcode the diagonal path because we already masked it
         diagonal_indices = np.arange(len(di_sm))
@@ -119,7 +119,7 @@ def find_local_warping_paths(
             (
                 global_rows.astype(np.int32),
                 global_cols.astype(np.int32),
-                sims.astype(np.float32)
+                sims.astype(np.float32),
             )
         )
 
@@ -191,7 +191,6 @@ def find_motif_representatives(
     return mf.find_motifs_representativesV3(
         x, global_offsets, global_column_dict_lists_paths, L_MIN, L_MAX, OVERLAP
     )
-
 
 
 def z_normalize(timeseries: np.ndarray) -> np.ndarray:

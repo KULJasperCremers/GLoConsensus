@@ -14,7 +14,7 @@ from numba import boolean, float32, int32, njit, prange, types
         int32,
         float32,
     ),
-    parallel=True
+    parallel=True,
 )
 def find_candidatesV3(
     start_mask: np.ndarray,
@@ -49,7 +49,7 @@ def find_candidatesV3(
             continue
 
         thread_best_fitness = 0.0
-        thread_best_candidate = (0,n)
+        thread_best_candidate = (0, n)
 
         # map local indices to global indices
         global_start_index = start_index + start_offset
@@ -158,7 +158,9 @@ def find_candidatesV3(
 
     best_index = np.argmax(best_fitness_arr)
     best_fitness = best_fitness_arr[best_index]
-    best_candidate = (best_candidate_arr[best_index][0],
-                      best_candidate_arr[best_index][1])
+    best_candidate = (
+        best_candidate_arr[best_index][0],
+        best_candidate_arr[best_index][1],
+    )
 
     return best_candidate, best_fitness
