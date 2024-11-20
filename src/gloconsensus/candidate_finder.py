@@ -39,6 +39,10 @@ def find_candidatesV3(
     path_start_indices = np.array([path.column_start for path in paths])
     path_end_indices = np.array([path.column_end for path in paths])
 
+    num_start_indices = n - L_MIN + 1
+    if num_start_indices <= 0:
+        return ((0, 0), 0.0)
+
     # store per-thread results
     best_fitness_arr = np.zeros(n - L_MIN + 1, dtype=np.float32)
     best_candidate_arr = np.zeros((n - L_MIN + 1, 2), dtype=np.int32)
